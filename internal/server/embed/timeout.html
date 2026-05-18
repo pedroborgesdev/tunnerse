@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="dark" />
+        <link rel="icon" type="image/x-icon" href="favicon.ico">
+        
+        <title>Tunnerse | Timeout</title>
+
+        <style>
+            :root {
+                --bg0: #05060a;
+                --bg1: #0b0f19;
+                --card: rgba(255, 255, 255, 0.06);
+                --line: rgba(255, 255, 255, 0.12);
+                --text: rgba(255, 255, 255, 0.92);
+                --muted: rgba(255, 255, 255, 0.68);
+                --muted2: rgba(255, 255, 255, 0.52);
+                --warn: #f59e0b;
+                --accent2: #22d3ee;
+                --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+                --radius: 18px;
+            }
+
+            * { box-sizing: border-box; }
+            html, body { height: 100%; }
+
+            /*
+             * Mobile browsers can change the visible viewport height as the URL bar
+             * shows/hides, which makes large radial-gradients appear to “spill” into
+             * the bottom browser UI. We render the gradients on a fixed, clipped
+             * layer and size the layout using dynamic viewport units.
+             */
+            html {
+                background: var(--bg0);
+                overflow-x: clip;
+            }
+
+            body {
+                position: relative;
+                isolation: isolate;
+                min-height: 100vh;
+                min-height: 100dvh;
+                overflow-x: clip;
+                overscroll-behavior-y: none;
+            }
+
+            body::before {
+                content: "";
+                position: fixed;
+                inset: 0;
+                z-index: -1;
+                pointer-events: none;
+                background:
+                    radial-gradient(1200px 800px at 18% 12%, rgba(245, 158, 11, 0.16), transparent 55%),
+                    radial-gradient(1000px 700px at 92% 20%, rgba(34, 211, 238, 0.12), transparent 55%),
+                    linear-gradient(180deg, var(--bg0), var(--bg1));
+                transform: translateZ(0);
+                will-change: transform;
+            }
+
+            body {
+                margin: 0;
+                color: var(--text);
+                font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+                    Ubuntu, Cantarell, Noto Sans, Helvetica, Arial;
+                display: grid;
+                place-items: center;
+                padding: 28px 16px;
+                padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+            }
+
+            /* Give a bit of extra space after the card so you can see the background on mobile */
+            @media (max-width: 759px) {
+                body {
+                    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+                }
+            }
+
+            .wrap { width: min(980px, 100%); }
+
+            .card {
+                background: linear-gradient(180deg, var(--card), rgba(255, 255, 255, 0.03));
+                border: 1px solid var(--line);
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+                backdrop-filter: blur(10px);
+                overflow: hidden;
+            }
+
+            .top {
+                display: flex;
+                gap: 16px;
+                align-items: center;
+                padding: 22px 22px 14px;
+                border-bottom: 1px solid var(--line);
+                background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(34, 211, 238, 0.06));
+            }
+
+            /* Desktop header layout: logo + title on the left, status on the right */
+            @media (min-width: 760px) {
+                .top > .badge {
+                    margin-left: auto;
+                    order: 3;
+                }
+                .top > div {
+                    order: 2;
+                }
+                .top > img {
+                    order: 1;
+                }
+            }
+
+            .badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                background: rgba(0, 0, 0, 0.25);
+            }
+
+            .dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 999px;
+                background: var(--warn);
+                box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
+            }
+
+            h1 {
+                margin: 0;
+                font-size: 18px;
+                letter-spacing: 0.2px;
+                font-weight: 800;
+            }
+
+            .subtitle {
+                margin: 6px 0 0;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .content {
+                padding: 20px 22px 22px;
+                display: grid;
+                gap: 14px;
+            }
+
+            .panel {
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.04);
+                border-radius: 14px;
+                padding: 16px;
+            }
+
+            .lead {
+                margin: 0;
+                font-size: 15px;
+                line-height: 1.55;
+            }
+
+            .muted { color: var(--muted); }
+
+            .grid {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+
+            @media (min-width: 760px) {
+                .grid {
+                    grid-template-columns: 1.35fr 0.65fr;
+                    align-items: start;
+                }
+            }
+
+            /* Mobile header layout: logo on top, then status, then title */
+            @media (max-width: 759px) {
+                .top {
+                    flex-direction: column;
+                    align-items: center;
+                    text-align: center;
+                }
+                .top > img {
+                    order: 1;
+                }
+                .top > .badge {
+                    order: 2;
+                }
+                .top > div {
+                    order: 3;
+                }
+            }
+
+            a {
+                color: rgba(255, 255, 255, 0.86);
+                text-decoration: none;
+                border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+            }
+
+            a:hover {
+                color: white;
+                border-bottom-color: rgba(34, 211, 238, 0.55);
+            }
+
+            .kv { display: grid; gap: 10px; }
+
+            .kv .row {
+                display: flex;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 10px 12px;
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.045);
+                border: 1px solid rgba(255, 255, 255, 0.10);
+            }
+
+            .k {
+                color: var(--muted2);
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.12em;
+            }
+
+            .v {
+                font-size: 13px;
+                color: var(--text);
+                font-weight: 700;
+                white-space: nowrap;
+            }
+
+            .foot {
+                padding: 14px 22px 18px;
+                border-top: 1px solid var(--line);
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                align-items: center;
+                justify-content: space-between;
+                background: rgba(0, 0, 0, 0.20);
+            }
+
+            .hint {
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                background: rgba(255, 255, 255, 0.04);
+                color: rgba(255, 255, 255, 0.86);
+                font-size: 12px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <main class="wrap">
+            <section class="card" role="status" aria-live="polite">
+                <header class="top">
+                    <img
+                        src="icon.png"
+                        width="102"
+                        height="102"
+                    />
+                    <span class="badge" aria-label="Status">
+                        <span class="dot" aria-hidden="true"></span>
+                        <strong style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;">Timeout</strong>
+                    </span>
+
+                    <div>
+                        <h1>Tunnerse | Timeout</h1>
+                        <p class="subtitle">The client didn’t reply in time.</p>
+                    </div>
+                </header>
+
+                <div class="content">
+                    <div class="grid">
+                        <div class="panel">
+                            <p class="lead"><strong>The tunnel client did not respond correctly</strong> to the request or is offline. Try again, or wait until the client resolves the issue.</p>
+                            <p class="lead muted" style="margin-top: 10px;">
+                                Tunnerse creates a tunnel that connects the target server using Tunnerse Server, with your machine pointing to a local port.
+                                Tunnerse Server acts only as an intermediary between the requester and your machine, while Tunnerse CLI translates the request coming from the server to your local application.
+                                The same process occurs when returning the response from your application.
+                            </p>
+                        </div>
+
+                        <aside class="panel">
+                            <div class="kv">
+                                <div class="row">
+                                    <span class="k">Author</span>
+                                    <span class="v"><a href="https://github.com/pedroborgesdev">pedroborgesdev</a></span>
+                                </div>
+                                <div class="row">
+                                    <span class="k">Project</span>
+                                    <span class="v"><a href="https://github.com/pedroborgesdev/tunnerse.git">Tunnerse</a></span>
+                                </div>
+                            </div>
+                        </aside>
+                    </div>
+                </div>
+
+                <footer class="foot">
+                    <span class="hint">Tip: ensure the client is running and the local port is reachable.</span>
+                    <span class="pill">Try again</span>
+                </footer>
+            </section>
+        </main>
+    </body>
+</html>

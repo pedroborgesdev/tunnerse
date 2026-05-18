@@ -1,0 +1,18 @@
+# Build binaries
+**/bin/
+dist/
+
+# Generated Windows resources
+*.syso
+
+# Environment variables
+.env
+
+# Certificates
+certs/
+
+# Go
+go.sum
+
+# Tunnerse configuration
+tunnerse.config

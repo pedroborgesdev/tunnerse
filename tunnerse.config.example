@@ -1,0 +1,7 @@
+[domains]
+*.your-server-domain.com=8080
+your-server-domain.com=8080
+
+[tls]
+cert_file=certs/certificates/your-server-domain.com.crt
+key_file=certs/certificates/your-server-domain.com.key
