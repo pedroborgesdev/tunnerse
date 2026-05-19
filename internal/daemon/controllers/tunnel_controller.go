@@ -67,6 +67,24 @@ func (c *TunnelController) StopHTTP(ctx *gin.Context) {
 	logger.Log("INFO", "HTTP tunnel stopped successfully", []logger.LogDetail{{Key: "tunnel_id", Value: req.TunnelID}})
 }
 
+func (c *TunnelController) Health(ctx *gin.Context) {
+	tunnelID := ctx.Param("tunnel_id")
+	if tunnelID == "" {
+		utils.BadRequest(ctx, gin.H{"error": "tunnel_id is required"})
+		return
+	}
+
+	if err := c.tunnelService.KeepHTTPTunnelAlive(tunnelID); err != nil {
+		utils.NotFound(ctx, gin.H{"error": err.Error(), "tunnel_id": tunnelID})
+		return
+	}
+
+	utils.Success(ctx, gin.H{
+		"message":   "HTTP tunnel heartbeat received",
+		"tunnel_id": tunnelID,
+	})
+}
+
 func (c *TunnelController) Logs(ctx *gin.Context) {
 	tunnelID := ctx.Param("tunnel_id")
 

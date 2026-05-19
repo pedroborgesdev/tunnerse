@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pedroborgesdev/tunnerse-cli/internal/daemon/config"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/daemon/jobs"
+	"github.com/pedroborgesdev/tunnerse-cli/internal/daemon/logger"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/daemon/models"
 )
 
@@ -19,6 +21,14 @@ type TunnelService struct{}
 var tunnelServiceHTTPClient = &http.Client{
 	Timeout: 15 * time.Second,
 }
+
+const tunnelHeartbeatTimeout = 10 * time.Second
+
+var (
+	tunnelHeartbeatMu         sync.Mutex
+	tunnelHeartbeatTimers     = map[string]*time.Timer{}
+	tunnelHeartbeatGeneration = map[string]uint64{}
+)
 
 func NewTunnelService() *TunnelService {
 	return &TunnelService{}
@@ -90,13 +100,28 @@ func (s *TunnelService) RegisterTunnel(name, port, server_url string) (string, b
 	}
 
 	config.SetActiveJob(tunnelID, loopJob)
+	s.resetTunnelHeartbeatMonitor(tunnelID)
 
 	go func() {
 		loopJob.StartTunnelLoop()
+		s.stopTunnelHeartbeatMonitor(tunnelID)
 		config.RemoveActiveJob(tunnelID)
 	}()
 
 	return tunnelID, result.Data.Subdomain, nil
+}
+
+func (s *TunnelService) KeepHTTPTunnelAlive(tunnelID string) error {
+	if _, exists := config.GetHTTPTunnelURL(tunnelID); !exists {
+		return fmt.Errorf("HTTP tunnel not found")
+	}
+
+	if _, exists := config.GetActiveJob(tunnelID); !exists {
+		return fmt.Errorf("HTTP tunnel not found")
+	}
+
+	s.resetTunnelHeartbeatMonitor(tunnelID)
+	return nil
 }
 
 func (s *TunnelService) StopHTTPTunnel(tunnelID string) error {
@@ -111,6 +136,8 @@ func (s *TunnelService) StopHTTPTunnel(tunnelID string) error {
 	if tunnelURL == "" {
 		return fmt.Errorf("tunnel URL is empty")
 	}
+
+	s.stopTunnelHeartbeatMonitor(tunnelID)
 
 	if job, exists := config.GetActiveJob(tunnelID); exists {
 		config.RemoveActiveJob(tunnelID)
@@ -136,6 +163,51 @@ func (s *TunnelService) StopHTTPTunnel(tunnelID string) error {
 	}()
 
 	return nil
+}
+
+func (s *TunnelService) resetTunnelHeartbeatMonitor(tunnelID string) {
+	tunnelHeartbeatMu.Lock()
+	tunnelHeartbeatGeneration[tunnelID]++
+	generation := tunnelHeartbeatGeneration[tunnelID]
+
+	if timer, exists := tunnelHeartbeatTimers[tunnelID]; exists {
+		timer.Stop()
+	}
+
+	tunnelHeartbeatTimers[tunnelID] = time.AfterFunc(tunnelHeartbeatTimeout, func() {
+		tunnelHeartbeatMu.Lock()
+		if tunnelHeartbeatGeneration[tunnelID] != generation {
+			tunnelHeartbeatMu.Unlock()
+			return
+		}
+		delete(tunnelHeartbeatTimers, tunnelID)
+		delete(tunnelHeartbeatGeneration, tunnelID)
+		tunnelHeartbeatMu.Unlock()
+
+		logger.Log("FATAL", "CLI heartbeat timeout, closing tunnel", []logger.LogDetail{
+			{Key: "tunnel_id", Value: tunnelID},
+			{Key: "timeout", Value: tunnelHeartbeatTimeout.String()},
+		})
+
+		if err := s.StopHTTPTunnel(tunnelID); err != nil {
+			logger.Log("ERROR", "Failed to stop HTTP tunnel after heartbeat timeout", []logger.LogDetail{
+				{Key: "tunnel_id", Value: tunnelID},
+				{Key: "Error", Value: err.Error()},
+			})
+		}
+	})
+	tunnelHeartbeatMu.Unlock()
+}
+
+func (s *TunnelService) stopTunnelHeartbeatMonitor(tunnelID string) {
+	tunnelHeartbeatMu.Lock()
+	defer tunnelHeartbeatMu.Unlock()
+
+	if timer, exists := tunnelHeartbeatTimers[tunnelID]; exists {
+		timer.Stop()
+		delete(tunnelHeartbeatTimers, tunnelID)
+	}
+	delete(tunnelHeartbeatGeneration, tunnelID)
 }
 
 func extractTunnelID(fullURL, serverDomain string) string {
