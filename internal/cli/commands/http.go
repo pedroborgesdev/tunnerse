@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/dto"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/logger"
+	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/text"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/utils"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/validators"
 
@@ -60,7 +60,7 @@ var localServerHTTPClient = &http.Client{
 const tunnelHeartbeatInterval = 3 * time.Second
 
 func startHTTPTunnel(args []string) {
-	fmt.Printf(dto.Start)
+	fmt.Printf(text.Start)
 
 	validateHTTPArgs(args)
 
