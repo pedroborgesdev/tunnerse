@@ -67,8 +67,6 @@ func openTunnelLogFileLocked(tunnelID string) error {
 
 	logFiles[tunnelID] = file
 
-	fmt.Printf("✓ Log file created: %s\n", logPath)
-
 	return nil
 }
 
@@ -80,7 +78,6 @@ func CloseTunnelLogFile(tunnelID string) {
 		file.Sync()
 		file.Close()
 		delete(logFiles, tunnelID)
-		fmt.Printf("✓ Log file closed: %s\n", tunnelID)
 	}
 }
 

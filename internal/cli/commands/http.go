@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/dto"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/logger"
+	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/text"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/utils"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/validators"
 
@@ -57,8 +57,10 @@ var localServerHTTPClient = &http.Client{
 	Timeout: 15 * time.Second,
 }
 
+const tunnelHeartbeatInterval = 3 * time.Second
+
 func startHTTPTunnel(args []string) {
-	fmt.Printf(dto.Start)
+	fmt.Printf(text.Start)
 
 	validateHTTPArgs(args)
 
@@ -145,11 +147,12 @@ func startHTTPTunnel(args []string) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	stopLogs := make(chan struct{})
-	go tailTunnelLogs(tunnelID, stopLogs)
+	stopBackground := make(chan struct{})
+	go tailTunnelLogs(tunnelID, stopBackground)
+	go keepTunnelAlive(tunnelID, stopBackground)
 
 	<-sigChan
-	close(stopLogs)
+	close(stopBackground)
 
 	fmt.Println()
 	logger.Log("INFO", "Stopping tunnel...", []logger.LogDetail{}, false)
@@ -214,6 +217,42 @@ func stopTunnel(tunnelID string) {
 		}, false)
 		return
 	}
+}
+
+func keepTunnelAlive(tunnelID string, done <-chan struct{}) {
+	for {
+		if err := sendTunnelHeartbeat(tunnelID); err != nil {
+			if isConnRefused(err) {
+				logger.Log("ERROR", "Tunnerse local server is not online", []logger.LogDetail{
+					{Key: "Hint", Value: "Make sure tunnerse-server is running and accessible on http://localhost:9988"},
+				}, false)
+			}
+			return
+		}
+
+		select {
+		case <-done:
+			return
+		case <-time.After(tunnelHeartbeatInterval):
+		}
+	}
+}
+
+func sendTunnelHeartbeat(tunnelID string) error {
+	endpoint := fmt.Sprintf("http://localhost:9988/health/%s", url.PathEscape(tunnelID))
+
+	resp, err := localServerHTTPClient.Get(endpoint)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		return fmt.Errorf("heartbeat rejected: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return nil
 }
 
 func tailTunnelLogs(tunnelID string, done <-chan struct{}) {

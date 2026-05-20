@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/dto"
+	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/text"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/cli/utils"
 
 	"github.com/spf13/cobra"
@@ -27,20 +27,20 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	utils.Clear()
 
-	fmt.Print(dto.Welcome)
-	fmt.Print(dto.Banner)
+	fmt.Print(text.Welcome)
+	fmt.Print(text.Banner)
 	rootCmd.AddCommand(httpTunnel)
 	if err := rootCmd.Execute(); err != nil {
 		utils.Clear()
 
-		fmt.Print(dto.Welcome)
-		fmt.Print(dto.Banner)
+		fmt.Print(text.Welcome)
+		fmt.Print(text.Banner)
 		fmt.Printf("%s\n", friendlyCommandError(err))
-		fmt.Print(dto.Commands)
+		fmt.Print(text.Commands)
 		os.Exit(1)
 	}
 
-	fmt.Print(dto.Commands)
+	fmt.Print(text.Commands)
 
 }
 
