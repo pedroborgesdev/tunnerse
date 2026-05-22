@@ -42,12 +42,14 @@ const (
 
 Commands:
   http <name> <port>    Create a temporary tunnel (runs in foreground)
+  tcp <name> <port>     Create a temporary TCP tunnel (runs in foreground)
 
 Options:
   -h, --help            Show this help message
 
 Examples:
   tunnerse http test-app 3000
+  tunnerse tcp ssh 22
 
 `
 	Help string = `Tunnerse creates a tunnel that connects the target server using Tunnerse
@@ -61,12 +63,14 @@ Usage: tunnerse <command> [arguments]
 
 Commands:
   http <name> <port>    Create a temporary tunnel
+  tcp <name> <port>     Create a temporary TCP tunnel
 
 Options:
   -h, --help            Show this help message
 
 Examples:
   tunnerse http test-app 3000   # Create temporary tunnel
+  tunnerse tcp ssh 22           # Create temporary TCP tunnel
 
 Thanks for using Tunnerse ;)
 

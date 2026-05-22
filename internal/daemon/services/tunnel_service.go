@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -25,9 +27,12 @@ var tunnelServiceHTTPClient = &http.Client{
 const tunnelHeartbeatTimeout = 10 * time.Second
 
 var (
-	tunnelHeartbeatMu         sync.Mutex
-	tunnelHeartbeatTimers     = map[string]*time.Timer{}
-	tunnelHeartbeatGeneration = map[string]uint64{}
+	tunnelHeartbeatMu            sync.Mutex
+	tunnelHeartbeatTimers        = map[string]*time.Timer{}
+	tunnelHeartbeatGeneration    = map[string]uint64{}
+	tcpTunnelHeartbeatMu         sync.Mutex
+	tcpTunnelHeartbeatTimers     = map[string]*time.Timer{}
+	tcpTunnelHeartbeatGeneration = map[string]uint64{}
 )
 
 func NewTunnelService() *TunnelService {
@@ -109,6 +114,68 @@ func (s *TunnelService) RegisterTunnel(name, port, server_url string) (string, b
 	}()
 
 	return tunnelID, result.Data.Subdomain, nil
+}
+
+func (s *TunnelService) RegisterTCPTunnel(name, port, serverURL string) (string, string, error) {
+	wsURL, err := buildTCPWebSocketURL(serverURL)
+	if err != nil {
+		return "", "", err
+	}
+
+	job := jobs.NewTCPTunnelJob(name, port, wsURL)
+	hostname, err := job.Start()
+	if err != nil {
+		return "", "", err
+	}
+
+	tunnelID := extractTCPHostnameName(hostname)
+	if tunnelID == "" {
+		job.Stop()
+		return "", "", fmt.Errorf("TCP register response produced empty tunnel id")
+	}
+
+	endpoint := hostname + ":443"
+	config.SetTCPTunnelEndpoint(tunnelID, endpoint)
+	config.SetActiveJob(tunnelID, job)
+	s.resetTCPTunnelHeartbeatMonitor(tunnelID)
+
+	go func() {
+		<-job.Done()
+		s.stopTCPTunnelHeartbeatMonitor(tunnelID)
+		config.RemoveActiveJob(tunnelID)
+		config.RemoveTCPTunnelEndpoint(tunnelID)
+	}()
+
+	return tunnelID, endpoint, nil
+}
+
+func (s *TunnelService) KeepTCPTunnelAlive(tunnelID string) error {
+	if _, exists := config.GetTCPTunnelEndpoint(tunnelID); !exists {
+		return fmt.Errorf("TCP tunnel not found")
+	}
+
+	if _, exists := config.GetActiveJob(tunnelID); !exists {
+		return fmt.Errorf("TCP tunnel not found")
+	}
+
+	s.resetTCPTunnelHeartbeatMonitor(tunnelID)
+	return nil
+}
+
+func (s *TunnelService) StopTCPTunnel(tunnelID string) error {
+	if _, exists := config.GetTCPTunnelEndpoint(tunnelID); !exists {
+		return fmt.Errorf("TCP tunnel not found")
+	}
+
+	s.stopTCPTunnelHeartbeatMonitor(tunnelID)
+
+	if job, exists := config.GetActiveJob(tunnelID); exists {
+		config.RemoveActiveJob(tunnelID)
+		job.Stop()
+	}
+	config.RemoveTCPTunnelEndpoint(tunnelID)
+
+	return nil
 }
 
 func (s *TunnelService) KeepHTTPTunnelAlive(tunnelID string) error {
@@ -210,6 +277,51 @@ func (s *TunnelService) stopTunnelHeartbeatMonitor(tunnelID string) {
 	delete(tunnelHeartbeatGeneration, tunnelID)
 }
 
+func (s *TunnelService) resetTCPTunnelHeartbeatMonitor(tunnelID string) {
+	tcpTunnelHeartbeatMu.Lock()
+	tcpTunnelHeartbeatGeneration[tunnelID]++
+	generation := tcpTunnelHeartbeatGeneration[tunnelID]
+
+	if timer, exists := tcpTunnelHeartbeatTimers[tunnelID]; exists {
+		timer.Stop()
+	}
+
+	tcpTunnelHeartbeatTimers[tunnelID] = time.AfterFunc(tunnelHeartbeatTimeout, func() {
+		tcpTunnelHeartbeatMu.Lock()
+		if tcpTunnelHeartbeatGeneration[tunnelID] != generation {
+			tcpTunnelHeartbeatMu.Unlock()
+			return
+		}
+		delete(tcpTunnelHeartbeatTimers, tunnelID)
+		delete(tcpTunnelHeartbeatGeneration, tunnelID)
+		tcpTunnelHeartbeatMu.Unlock()
+
+		logger.Log("FATAL", "CLI heartbeat timeout, closing TCP tunnel", []logger.LogDetail{
+			{Key: "tunnel_id", Value: tunnelID},
+			{Key: "timeout", Value: tunnelHeartbeatTimeout.String()},
+		})
+
+		if err := s.StopTCPTunnel(tunnelID); err != nil {
+			logger.Log("ERROR", "Failed to stop TCP tunnel after heartbeat timeout", []logger.LogDetail{
+				{Key: "tunnel_id", Value: tunnelID},
+				{Key: "Error", Value: err.Error()},
+			})
+		}
+	})
+	tcpTunnelHeartbeatMu.Unlock()
+}
+
+func (s *TunnelService) stopTCPTunnelHeartbeatMonitor(tunnelID string) {
+	tcpTunnelHeartbeatMu.Lock()
+	defer tcpTunnelHeartbeatMu.Unlock()
+
+	if timer, exists := tcpTunnelHeartbeatTimers[tunnelID]; exists {
+		timer.Stop()
+		delete(tcpTunnelHeartbeatTimers, tunnelID)
+	}
+	delete(tcpTunnelHeartbeatGeneration, tunnelID)
+}
+
 func extractTunnelID(fullURL, serverDomain string) string {
 	url := strings.TrimPrefix(fullURL, "http://")
 	url = strings.TrimPrefix(url, "https://")
@@ -218,4 +330,49 @@ func extractTunnelID(fullURL, serverDomain string) string {
 	url = strings.TrimPrefix(url, serverDomain+"/")
 
 	return url
+}
+
+func buildTCPWebSocketURL(serverURL string) (string, error) {
+	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
+		return "", fmt.Errorf("server_url must start with http:// or https://")
+	}
+
+	parsed, err := url.Parse(strings.TrimRight(serverURL, "/"))
+	if err != nil {
+		return "", err
+	}
+
+	scheme := "ws"
+	if parsed.Scheme == "https" {
+		scheme = "wss"
+	}
+
+	host := parsed.Host
+	hostname := parsed.Hostname()
+	if hostname != "" &&
+		hostname != "localhost" &&
+		!strings.HasPrefix(hostname, "127.") &&
+		!strings.HasPrefix(hostname, "[") &&
+		!strings.HasPrefix(hostname, "api.") {
+		if port := parsed.Port(); port != "" {
+			host = "api." + hostname + ":" + port
+		} else {
+			host = "api." + hostname
+		}
+	}
+
+	return fmt.Sprintf("%s://%s/ws/tcp", scheme, host), nil
+}
+
+func extractTCPHostnameName(hostname string) string {
+	hostname = strings.TrimPrefix(hostname, "tcp://")
+	hostname = strings.TrimPrefix(hostname, "tls://")
+	if h, _, err := net.SplitHostPort(hostname); err == nil {
+		hostname = h
+	}
+	parts := strings.Split(hostname, ".")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
 }

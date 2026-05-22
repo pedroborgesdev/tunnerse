@@ -6,13 +6,15 @@ import (
 	"github.com/pedroborgesdev/tunnerse-cli/internal/server/config"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/server/controllers"
 	apiembed "github.com/pedroborgesdev/tunnerse-cli/internal/server/embed"
+	"github.com/pedroborgesdev/tunnerse-cli/internal/server/services"
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRoutes(router *gin.Engine) {
+func SetupRoutes(router *gin.Engine, tcpTunnelService *services.TCPTunnelService) {
 
 	tunnelController := controllers.NewTunnelController()
+	tcpTunnelController := controllers.NewTCPTunnelController(tcpTunnelService)
 
 	router.GET("/health", func(c *gin.Context) {
 		c.String(http.StatusOK, "OK")
@@ -35,6 +37,7 @@ func SetupRoutes(router *gin.Engine) {
 	})
 
 	tunnel := router.Group("/")
+	tunnel.GET("/ws/tcp", tcpTunnelController.WebSocket)
 
 	if config.AppConfig.SUBDOMAIN {
 		tunnel.POST("/register", tunnelController.Register)

@@ -21,4 +21,7 @@ func SetupRoutes(router *gin.Engine) {
 	tunnel.GET("/http/logs/:tunnel_id", tunnelController.Logs)
 	tunnel.POST("/http/stop", tunnelController.StopHTTP)
 	tunnel.GET("/health/:tunnel_id", tunnelController.Health)
+	tunnel.POST("/tcp", tunnelController.TCP)
+	tunnel.POST("/tcp/stop", tunnelController.StopTCP)
+	tunnel.GET("/tcp/health/:tunnel_id", tunnelController.TCPHealth)
 }

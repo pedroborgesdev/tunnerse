@@ -13,3 +13,7 @@ type OpenRequest struct {
 type StopHTTPRequest struct {
 	TunnelID string `json:"tunnel_id" binding:"required"`
 }
+
+type StopTCPRequest struct {
+	TunnelID string `json:"tunnel_id" binding:"required"`
+}

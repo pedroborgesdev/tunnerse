@@ -67,6 +67,70 @@ func (c *TunnelController) StopHTTP(ctx *gin.Context) {
 	logger.Log("INFO", "HTTP tunnel stopped successfully", []logger.LogDetail{{Key: "tunnel_id", Value: req.TunnelID}})
 }
 
+func (c *TunnelController) TCP(ctx *gin.Context) {
+	var req utils.OpenRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(ctx, gin.H{"error": err.Error()})
+		return
+	}
+
+	tunnelID, endpoint, err := c.tunnelService.RegisterTCPTunnel(req.Name, req.Port, req.ServerURL)
+	if err != nil {
+		utils.BadRequest(ctx, gin.H{"error": err.Error()})
+		logger.Log("ERROR", "TCP tunnel registration failed", []logger.LogDetail{{Key: "Error", Value: err.Error()}})
+		return
+	}
+
+	utils.Success(ctx, gin.H{
+		"message":  "TCP tunnel has been registered",
+		"tunnel":   tunnelID,
+		"endpoint": endpoint,
+	})
+	logger.Log("INFO", "TCP tunnel registered successfully", []logger.LogDetail{
+		{Key: "tunnel", Value: tunnelID},
+		{Key: "endpoint", Value: endpoint},
+	})
+}
+
+func (c *TunnelController) StopTCP(ctx *gin.Context) {
+	var req utils.StopTCPRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(ctx, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := c.tunnelService.StopTCPTunnel(req.TunnelID)
+	if err != nil {
+		utils.InternalError(ctx, gin.H{"error": err.Error(), "tunnel_id": req.TunnelID})
+		logger.Log("ERROR", "Failed to stop TCP tunnel", []logger.LogDetail{{Key: "Error", Value: err.Error()}, {Key: "tunnel_id", Value: req.TunnelID}})
+		return
+	}
+
+	utils.Success(ctx, gin.H{
+		"message":   "TCP tunnel has been stopped",
+		"tunnel_id": req.TunnelID,
+	})
+	logger.Log("INFO", "TCP tunnel stopped successfully", []logger.LogDetail{{Key: "tunnel_id", Value: req.TunnelID}})
+}
+
+func (c *TunnelController) TCPHealth(ctx *gin.Context) {
+	tunnelID := ctx.Param("tunnel_id")
+	if tunnelID == "" {
+		utils.BadRequest(ctx, gin.H{"error": "tunnel_id is required"})
+		return
+	}
+
+	if err := c.tunnelService.KeepTCPTunnelAlive(tunnelID); err != nil {
+		utils.NotFound(ctx, gin.H{"error": err.Error(), "tunnel_id": tunnelID})
+		return
+	}
+
+	utils.Success(ctx, gin.H{
+		"message":   "TCP tunnel heartbeat received",
+		"tunnel_id": tunnelID,
+	})
+}
+
 func (c *TunnelController) Health(ctx *gin.Context) {
 	tunnelID := ctx.Param("tunnel_id")
 	if tunnelID == "" {

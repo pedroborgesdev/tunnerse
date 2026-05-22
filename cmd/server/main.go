@@ -13,13 +13,15 @@ import (
 	"github.com/pedroborgesdev/tunnerse-cli/internal/server/logger"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/server/middlewares"
 	"github.com/pedroborgesdev/tunnerse-cli/internal/server/routes"
+	"github.com/pedroborgesdev/tunnerse-cli/internal/server/services"
 )
 
 func main() {
 	_ = debug.LoadDebugConfig()
 	config.LoadAppConfig()
+	tcpTunnelService := services.NewTCPTunnelService()
 
-	errCh, err := expose.StartExpose()
+	errCh, err := expose.StartExpose(tcpTunnelService)
 	if err != nil {
 		fmt.Printf("\nFailed to start expose: %s\n", err.Error())
 		os.Exit(1)
@@ -40,7 +42,7 @@ func main() {
 		middlewares.CORSMiddleware(),
 	)
 
-	routes.SetupRoutes(router)
+	routes.SetupRoutes(router, tcpTunnelService)
 
 	writeTimeout := time.Duration(config.AppConfig.TUNNEL_REQUEST_TIMEOUT+30) * time.Second
 	if writeTimeout < 90*time.Second {

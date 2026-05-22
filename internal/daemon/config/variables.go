@@ -13,6 +13,8 @@ var (
 
 var HTTPTunnelURLs = map[string]string{}
 var httpTunnelURLsMu sync.RWMutex
+var TCPTunnelEndpoints = map[string]string{}
+var tcpTunnelEndpointsMu sync.RWMutex
 
 func SetHTTPTunnelURL(tunnelID, tunnelURL string) {
 	httpTunnelURLsMu.Lock()
@@ -31,6 +33,25 @@ func RemoveHTTPTunnelURL(tunnelID string) {
 	httpTunnelURLsMu.Lock()
 	defer httpTunnelURLsMu.Unlock()
 	delete(HTTPTunnelURLs, tunnelID)
+}
+
+func SetTCPTunnelEndpoint(tunnelID, endpoint string) {
+	tcpTunnelEndpointsMu.Lock()
+	defer tcpTunnelEndpointsMu.Unlock()
+	TCPTunnelEndpoints[tunnelID] = endpoint
+}
+
+func GetTCPTunnelEndpoint(tunnelID string) (string, bool) {
+	tcpTunnelEndpointsMu.RLock()
+	defer tcpTunnelEndpointsMu.RUnlock()
+	endpoint, exists := TCPTunnelEndpoints[tunnelID]
+	return endpoint, exists
+}
+
+func RemoveTCPTunnelEndpoint(tunnelID string) {
+	tcpTunnelEndpointsMu.Lock()
+	defer tcpTunnelEndpointsMu.Unlock()
+	delete(TCPTunnelEndpoints, tunnelID)
 }
 
 type TunnelJob interface {

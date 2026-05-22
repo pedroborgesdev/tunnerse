@@ -2,7 +2,9 @@ package expose
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -21,6 +23,42 @@ var (
 	tlsCertFile  string
 	tlsKeyFile   string
 )
+
+type TCPConnHandler interface {
+	IsTCPTunnelHostname(hostname string) bool
+	HandleExternalConnection(hostname string, conn net.Conn)
+}
+
+type channelListener struct {
+	conns chan net.Conn
+	addr  net.Addr
+	done  chan struct{}
+}
+
+func (l *channelListener) Accept() (net.Conn, error) {
+	select {
+	case conn := <-l.conns:
+		if conn == nil {
+			return nil, net.ErrClosed
+		}
+		return conn, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *channelListener) Close() error {
+	select {
+	case <-l.done:
+	default:
+		close(l.done)
+	}
+	return nil
+}
+
+func (l *channelListener) Addr() net.Addr {
+	return l.addr
+}
 
 func loadConfig(path string) error {
 	routes = make(map[string]string)
@@ -162,7 +200,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "domain not configured", http.StatusNotFound)
 }
 
-func StartExpose() (<-chan error, error) {
+func StartExpose(tcpHandler TCPConnHandler) (<-chan error, error) {
 	if err := loadConfig("tunnerse.config"); err != nil {
 		return nil, fmt.Errorf("error to load config: %v", err)
 	}
@@ -184,6 +222,27 @@ func StartExpose() (<-chan error, error) {
 	writeTimeout := time.Duration(config.AppConfig.TUNNEL_REQUEST_TIMEOUT+30) * time.Second
 	if writeTimeout < 90*time.Second {
 		writeTimeout = 90 * time.Second
+	}
+
+	cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("error to load TLS certificate: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	rawTLSListener, err := net.Listen("tcp", ":443")
+	if err != nil {
+		return nil, fmt.Errorf("https listener error: %w", err)
+	}
+
+	httpTLSListener := &channelListener{
+		conns: make(chan net.Conn, 1024),
+		addr:  rawTLSListener.Addr(),
+		done:  make(chan struct{}),
 	}
 
 	httpsSrv := &http.Server{
@@ -209,18 +268,57 @@ func StartExpose() (<-chan error, error) {
 	}()
 
 	go func() {
-		if err := httpsSrv.ListenAndServeTLS(tlsCertFile, tlsKeyFile); err != nil && err != http.ErrServerClosed {
+		if err := httpsSrv.Serve(httpTLSListener); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("https server error: %w", err)
 		}
 	}()
+
+	go routeTLSConnections(rawTLSListener, tlsConfig, httpTLSListener, tcpHandler, errCh)
 
 	return errCh, nil
 }
 
 func Expose() error {
-	errCh, err := StartExpose()
+	errCh, err := StartExpose(nil)
 	if err != nil {
 		return err
 	}
 	return <-errCh
+}
+
+func routeTLSConnections(listener net.Listener, tlsConfig *tls.Config, httpTLSListener *channelListener, tcpHandler TCPConnHandler, errCh chan<- error) {
+	for {
+		rawConn, err := listener.Accept()
+		if err != nil {
+			errCh <- fmt.Errorf("tls accept error: %w", err)
+			return
+		}
+
+		go routeTLSConnection(rawConn, tlsConfig, httpTLSListener, tcpHandler)
+	}
+}
+
+func routeTLSConnection(rawConn net.Conn, tlsConfig *tls.Config, httpTLSListener *channelListener, tcpHandler TCPConnHandler) {
+	tlsConn := tls.Server(rawConn, tlsConfig)
+	if err := tlsConn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		rawConn.Close()
+		return
+	}
+	if err := tlsConn.Handshake(); err != nil {
+		rawConn.Close()
+		return
+	}
+	_ = tlsConn.SetDeadline(time.Time{})
+
+	hostname := strings.ToLower(strings.TrimSuffix(tlsConn.ConnectionState().ServerName, "."))
+	if tcpHandler != nil && tcpHandler.IsTCPTunnelHostname(hostname) {
+		tcpHandler.HandleExternalConnection(hostname, tlsConn)
+		return
+	}
+
+	select {
+	case httpTLSListener.conns <- tlsConn:
+	case <-httpTLSListener.done:
+		tlsConn.Close()
+	}
 }

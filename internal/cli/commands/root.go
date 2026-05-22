@@ -30,6 +30,7 @@ func Execute() {
 	fmt.Print(text.Welcome)
 	fmt.Print(text.Banner)
 	rootCmd.AddCommand(httpTunnel)
+	rootCmd.AddCommand(tcpTunnel)
 	if err := rootCmd.Execute(); err != nil {
 		utils.Clear()
 
