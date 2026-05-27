@@ -361,8 +361,9 @@ func (s *LoopJob) ForwardToLocal(req *models.RequestData) (*models.ResponseData,
 	if resp.Header.Get("Content-Encoding") == "" {
 		if !s.isSubdomain {
 			body = utils.RewriteAbsolutePathsForContentType(body, s.ID, contentType)
+			body = utils.InjectTunnerseTunnelHeaderForAppDocument(body, path, contentType)
 		} else {
-			body = utils.InjectTunnerseTunnelHeaderForContentType(body, contentType)
+			body = utils.InjectTunnerseTunnelHeaderForAppDocument(body, path, contentType)
 		}
 	}
 
