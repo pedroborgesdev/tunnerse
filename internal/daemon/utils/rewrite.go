@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
@@ -30,11 +31,7 @@ func RewriteAbsolutePaths(html []byte, tunnelName string) []byte {
 
 func RewriteAbsolutePathsForContentType(body []byte, tunnelName, contentType string) []byte {
 	if shouldRewriteContentType(contentType) || looksLikeHTML(body) {
-		rewritten := RewriteAbsolutePaths(body, tunnelName)
-		if shouldInjectTunnerseTunnelHeader(rewritten, contentType) {
-			return InjectTunnerseTunnelHeader(rewritten)
-		}
-		return rewritten
+		return RewriteAbsolutePaths(body, tunnelName)
 	}
 	return body
 }
@@ -52,10 +49,25 @@ func isHTMLContentType(contentType string) bool {
 }
 
 func InjectTunnerseTunnelHeaderForContentType(body []byte, contentType string) []byte {
+	return body
+}
+
+func InjectTunnerseTunnelHeaderForAppDocument(body []byte, requestPath, contentType string) []byte {
+	if !isAppDocumentPath(requestPath) {
+		return body
+	}
 	if shouldInjectTunnerseTunnelHeader(body, contentType) {
 		return InjectTunnerseTunnelHeader(body)
 	}
 	return body
+}
+
+func isAppDocumentPath(requestPath string) bool {
+	cleanPath := path.Clean("/" + strings.TrimSpace(requestPath))
+	if cleanPath == "/" || cleanPath == "/index.html" {
+		return true
+	}
+	return path.Ext(cleanPath) == ""
 }
 
 func shouldInjectTunnerseTunnelHeader(body []byte, contentType string) bool {
